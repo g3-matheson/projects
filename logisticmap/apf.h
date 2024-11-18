@@ -52,6 +52,9 @@ class apf
     static apf mult(const apf&a, const double& d);
     static apf mult(const apf& a, int b); 
 
+    // TODO
+    //friend apf operator*(const apf& a, const apf& b);
+
     static apf div(const apf& a, const apf& b); // a/b
     static apf div(const apf& a, int b);
 
