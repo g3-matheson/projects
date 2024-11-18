@@ -1,15 +1,14 @@
 import matplotlib.pyplot as mplot
 import numpy as np
 
-
 def logistic(c,x):
     return c*x*(1-x)
 
 def drawIterations(x, c, plot_title, function_label, plot_filename):
     ax.plot([x[0],x[0]], [0,x[1]], color = 'red', label = r"$x_k$")
     for i in range(1, len(x)-1):
-        ax.plot([x[i-1],x[i]], [x[i], x[i]], color = 'red')
-        ax.plot([x[i],x[i]], [x[i], x[i+1]], color = 'red')
+        ax.plot([x[i-1],x[i]], [x[i], x[i]], color = 'red', linewidth = 0.1)
+        ax.plot([x[i],x[i]], [x[i], x[i+1]], color = 'red', linewidth = 0.1)
     
     ## draw curve
     curve_x = np.linspace(min(x)-1, max(x)+1, 100)
@@ -46,15 +45,12 @@ with open(filename, "r") as file:
             x.append([])
             current_list = x[counter]
 
-print("x: ", x)
-print("c values: ", cvalues)
-
 for i in range(0, len(cvalues)):
     print("cvalues[i] = ", cvalues[i])
     c = cvalues[i]
     fig, ax = mplot.subplots()
     
-    drawIterations(x[i], c, r"$c=$"+f"{c}", r"$f(x) = cx(1-x)$", "q3"+f"{i}.png")
+    drawIterations(x[i], c, r"$c=$"+f"{c}", r"$f(x) = cx(1-x)$", f"logistic_{i}.png")
     
     ax.clear()
     mplot.clf()
