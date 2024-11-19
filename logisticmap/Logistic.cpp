@@ -136,7 +136,9 @@ void runIteration(apf x0, apf c, int maxPrint, apf maxError, vector<apf>* xarr, 
 void processBucket(pair<int,pair<apf,apf>> bucket, string filename, apf maxError, int maxPrint)
 {
     apf cstart, cend, delta, x0;
-    x0 = 0.8; // HACK can make this randomly fluctuating 
+    x0 = 0.8; // HACK can make this randomly fluctuating, might look nice
+                // e.g inside of runIteration, add uniform[a,b] noise for small a < 0, b > 0
+                // or normal (0, sigma) for small sigma (bounded)
 
     int nFrames = bucket.first;
     cstart = bucket.second.first;
@@ -146,7 +148,7 @@ void processBucket(pair<int,pair<apf,apf>> bucket, string filename, apf maxError
     vector<apf>* xarr = new vector<apf>();
     
     ofstream ofout;
-    try // open ofout
+    try
     {
         ofout.open(filename, ios::out | ios::trunc);
     }
@@ -201,7 +203,7 @@ void runPythonScript(string filename, int nBuckets)
 
 }
 
-void makeGIF(int frameCount, int delayMultiplier, vector<pair<int,pair<apf,apf>>> cbuckets, string gifFilename)
+void makeGIF(string gifFilename)
 {
     try
     {
@@ -212,10 +214,12 @@ void makeGIF(int frameCount, int delayMultiplier, vector<pair<int,pair<apf,apf>>
         for(const auto& imagePath : filesystem::directory_iterator("./plots/"))
         {
             Image image(imagePath.path().string());
-            //image.animationDelay(static_cast<long>(delayMultiplier));
             images.push_back(image);
         }
         
+        // TODO figure out why this doesn't work!
+        // can just use the following:
+            // command(convert -delay 1 -loop 0 $(ls ./plots/*.png | sort -V) logisticmap.gif)
         writeImages(images.begin(), images.end(), gifFilename);
     }
     catch(const std::exception& e)
@@ -250,8 +254,6 @@ int main()
     string pythonScriptFilename = "LogisticPlot.py";
     
     int maxPrint = 500;         // HACK # of lines to print to file of the iterations, can be expanded to work like cvalues
-    int frameCount = 5000;      // note that Magic::ImageList.animationDelay(1) is 1s/1000
-    int delayMultiplier = 1;    // set to 2,3,4,5 for 10,15,20,25s version
 
     apf::precision(1000);
     apf maxError;
@@ -263,6 +265,8 @@ int main()
     c3 = "3.5699456718709449018420051513864989367638369115148323781079755299213628875001367775263210342163";
     c4 = "3.67857351042832226"; // TODO use Newton's Method (Comp 361 A3) to find this as the sol'n to x^3-2x^2-4x-8=0
     
+    // HACK make this read from a file to avoid re-compiling every time
+    // e.g ./Logistic <filename.txt> <outname.gif>
     vector<pair<int,pair<apf,apf>>> cbuckets
     {
         /*
@@ -280,7 +284,7 @@ int main()
         { 50, {c2, c3} },
         { 100, {c3, c4} },
         { 150, {c4, apf(3.9999)}}
-    }; // HACK make this read from a file to avoid re-compiling every time
+    }; 
 
     writeIterationsToFile(cbuckets, filenameRoot, maxError, maxPrint);
     runPythonScript(pythonScriptFilename, static_cast<int>(cbuckets.size()));
