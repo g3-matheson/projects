@@ -7,13 +7,17 @@
 #include <fstream>
 #include <vector>
 #include <functional>
+#include <format>
+#include <filesystem>
 using namespace std;
 using namespace Magick;
 // compilation
-// g++ -Wall -g -std=c++20 -o Logistic Logistic.cpp apf.cpp -lgmpxx -lgmp
+// g++ -Wall -g -std=c++20 -o Logistic Logistic.cpp apf.cpp -lgmpxx -lgmp $(Magick++-config --cxxflags --libs)
+// create gif (since makeGIF below isn't working rn)
+// convert -delay 1 -loop 0 $(ls ./plots/*.png | sort -V) logisticmap.gif
 
 // functions to use for logistic function and its derivative
-pair<function<apf(apf)>,function<apf(apf)>> logistic(double c)
+pair<function<apf(apf)>,function<apf(apf)>> logistic(apf c)
 {
     function<apf(apf)> logist = [=](apf x)
         -> apf
@@ -24,7 +28,7 @@ pair<function<apf(apf)>,function<apf(apf)>> logistic(double c)
     function<apf(apf)> logistp = [=](apf x)
         -> apf
         {
-            return apf(c) - apf::mult(x, apf(2.0 * c));
+            return apf(c) - apf::mult(x, apf::mult(c, 2.0));
         };
     
     return {logist, logistp};
@@ -52,9 +56,9 @@ vector<apf> checkCycle(vector<apf>* xarr, apf max_error, int n)
     }
 }
 
-void runIteration(double x0, double c, int maxIterations, apf max_error, vector<apf>* xarr)
+void runIteration(apf x0, apf c, int maxPrint, apf maxError, vector<apf>* xarr, bool consolePrint = false)
 {
-    apf xk, rel_error;
+    apf xk, relError;
     pair<function<apf(apf)>, function<apf(apf)>> logfns = logistic(c);
     function<apf(apf)> logisticfn = logfns.first;
 
@@ -72,25 +76,34 @@ void runIteration(double x0, double c, int maxIterations, apf max_error, vector<
 
     // check convergence
         // to 0
-        if(xk < max_error)
+        if(xk < maxError)
         {
-            cout << "x0 = " << x0 << " converged to 0"
-                 << " in " << count << " iterations." << endl;
+            if(consolePrint)
+            {
+                cout << "x0 = " << x0 << " converged to 0"
+                     << " in " << count << " iterations." << endl;
+            }
             return;
         }
         // to current value
-        rel_error = apf::reldiff(xk, xarr->back());
-        if(rel_error < max_error)
+        relError = apf::reldiff(xk, xarr->back());
+        if(relError < maxError)
         {
-            cout << "x0 = " << to_string(x0) << " converged to: " << xk 
+            if(consolePrint)
+            {
+                cout << "x0 = " << x0 << " converged to: " << xk 
                  << " in " << count << " iterations." << endl;
+            }
             return;
         }
-        // diverged after maxIterations
-        else if(count >= maxIterations && maxIterations != 0)
+        // stop at maxPrint iterations
+        else if(count >= maxPrint && maxPrint != 0)
         {
-            cout << "x0 = " << to_string(x0) << " failed to converge within " << max_error
-                 << " in " << to_string(maxIterations) << " iterations." << endl;
+            if(consolePrint)
+            {
+                cout << "x0 = " << x0 << " failed to converge within " << maxError
+                 << " in " << to_string(maxPrint) << " iterations." << endl;
+            }
             return;
         }
         /* to cycles
@@ -117,15 +130,20 @@ void runIteration(double x0, double c, int maxIterations, apf max_error, vector<
 
 }
 
+/*
+    Each bucket goes to its own .txt file which are all processed by the python script
+*/
 void processBucket(pair<int,pair<apf,apf>> bucket, string filename, apf maxError, int maxPrint)
 {
-    apf cstart, cend, delta;
+    apf cstart, cend, delta, x0;
+    x0 = 0.8; // HACK can make this randomly fluctuating 
+
     int nFrames = bucket.first;
     cstart = bucket.second.first;
     cend = bucket.second.second;
     delta = apf::div(cend-cstart, nFrames);
 
-    string filename;
+    vector<apf>* xarr = new vector<apf>();
     
     ofstream ofout;
     try // open ofout
@@ -139,15 +157,26 @@ void processBucket(pair<int,pair<apf,apf>> bucket, string filename, apf maxError
 
     for(apf c = cstart; c < cend; c = c + delta)
     {
-        // 
+        runIteration(x0, c, maxPrint, maxError, xarr);
+
+        ofout << "!" << endl;
+        ofout << "c=" << c << endl;
+
+        for(size_t i = 0; i < xarr->size(); i++)
+        {
+            ofout << "x" << to_string(i)
+                  << "=" << xarr->at(i) << endl << flush;
+        }
+    
+        xarr->clear();
     }
+
+    ofout.close();
+    delete xarr;
 }
 
 void writeIterationsToFile(vector<pair<int,pair<apf,apf>>> cbuckets, string filenameRoot, apf maxError, int maxPrint)
 {
-    /*
-        Write info file for python to know which files to read in
-    */
     int bucketCounter = 0;
     string filename;
     for(pair<int,pair<apf,apf>> bucket : cbuckets)
@@ -157,14 +186,19 @@ void writeIterationsToFile(vector<pair<int,pair<apf,apf>>> cbuckets, string file
     }
 }
 
-void runPythonScript(string filename)
+void runPythonScript(string filename, int nBuckets)
 {
-    string command = "python " + filename;
-    int result = system(command.c_str());
-    if(result != 0)
+    for(int i = 0; i < nBuckets; i++)
     {
-        cerr << "Error running python script." << endl;
+        cout << "Running: " << format("python {} {}", filename, i) << endl;
+        string command = format("python {} {}", filename, i);
+        int result = system(command.c_str());
+        if(result != 0)
+        {
+            cerr << "Error running python script." << endl;
+        }
     }
+
 }
 
 void makeGIF(int frameCount, int delayMultiplier, vector<pair<int,pair<apf,apf>>> cbuckets, string gifFilename)
@@ -174,20 +208,19 @@ void makeGIF(int frameCount, int delayMultiplier, vector<pair<int,pair<apf,apf>>
         InitializeMagick(nullptr);
         vector<Image> images;
         vector<string> imageFilenames;
-        // TODO stopped here
-        /* unpack cbuckets to find file names
-            for each imageFilename use:
-        */
-        Image image("test.png");
-        image.animationDelay(delayMultiplier);
-        images.push_back(image);
+
+        for(const auto& imagePath : filesystem::directory_iterator("./plots/"))
+        {
+            Image image(imagePath.path().string());
+            //image.animationDelay(static_cast<long>(delayMultiplier));
+            images.push_back(image);
+        }
         
         writeImages(images.begin(), images.end(), gifFilename);
-        
     }
-    catch(Magick::Exception& e)
+    catch(const std::exception& e)
     {
-        std::cerr << "Error creating .gif: " << e.what() << endl;
+        cerr << e.what() << endl;
     }
     
 }
@@ -240,16 +273,19 @@ int main()
             400, {apf(0.7), apf(2.0)}
         },
         */
-        { 500, {apf(0.7), apf(2.0)} },
-        { 500, {apf(2.0), apf(3.0)} },
-        { 500, {apf(3.0), c1} },
-        { 500, {c1, c2} },
-        { 1500, {c2, c3} },
-        { 500, {c3, c4} }
-    };
+        { 50, {apf(0.7), apf(2.0)} },
+        { 50, {apf(2.0), apf(3.0)} },
+        { 50, {apf(3.0), c1} },
+        { 50, {c1, c2} },
+        { 50, {c2, c3} },
+        { 100, {c3, c4} },
+        { 150, {c4, apf(3.9999)}}
+    }; // HACK make this read from a file to avoid re-compiling every time
 
     writeIterationsToFile(cbuckets, filenameRoot, maxError, maxPrint);
-    runPythonScript(pythonScriptFilename);
-    makeGIF(frameCount, delayMultiplier, cbuckets, gifFilename);
+    runPythonScript(pythonScriptFilename, static_cast<int>(cbuckets.size()));
+    //makeGIF(frameCount, delayMultiplier, cbuckets, gifFilename);
+
+    return 0;
 
 }
